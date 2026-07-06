@@ -1,6 +1,7 @@
 #include "main.h"
 #include "app_http.h"
 #include "app_control.h"
+#include "app_oled.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -149,6 +150,8 @@ void app_main(void)
 
     /* 初始化继电器和 RGB 灯 */
     control_init();
+
+    oled_init();   // ← 加这一行，OLED 上电
 
     /* 连 WiFi */
     ESP_LOGI(TAG, "开始连接WiFi...");

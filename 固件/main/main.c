@@ -2,6 +2,10 @@
 #include "app_http.h"
 #include "app_control.h"
 #include "app_oled.h"
+#include "app_voice.h"
+#include "app_sntp.h"
+#include "app_nvs.h"
+#include "app_predict.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -11,7 +15,6 @@
 #include "nvs_flash.h"
 #include "esp_adc/adc_oneshot.h"
 
-/* WiFi 配置（你之前的热点） */
 #define WIFI_SSID      "Resume"
 #define WIFI_PASS      "101652Zc."
 #define MAX_RETRY      5
@@ -22,7 +25,7 @@ static EventGroupHandle_t s_wifi_event_group;
 static const char* TAG = "MAIN";
 static int s_retry_num = 0;
 
-/* ---------- WiFi 事件处理（从你之前的代码复制） ---------- */
+/* ---------- WiFi 事件处理 ---------- */
 static void event_handler(void* arg, esp_event_base_t event_base,
     int32_t event_id, void* event_data)
 {
@@ -92,55 +95,110 @@ void wifi_init_sta(void)
     }
 }
 
-/* ---------- 传感器上报任务（每 10 秒一次） ---------- */
+/* ---------- 传感器上报任务 ---------- */
 static void sensor_task(void *pvParameters)
 {
-    /* ADC 初始化（读光敏，GPIO4 = ADC1_CH3） */
     adc_oneshot_unit_handle_t adc1_handle;
-    adc_oneshot_unit_init_cfg_t init_cfg = {.unit_id = ADC_UNIT_1};
-    adc_oneshot_new_unit(&init_cfg, &adc1_handle);
-    adc_oneshot_chan_cfg_t chan_cfg = {.atten = ADC_ATTEN_DB_12, .bitwidth = ADC_BITWIDTH_12};
-    adc_oneshot_config_channel(adc1_handle, ADC_CHANNEL_3, &chan_cfg);
-
+    adc_oneshot_unit_init_cfg_t init_config = {
+        .unit_id = ADC_UNIT_1,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc1_handle));
+    
+    adc_oneshot_chan_cfg_t chan_config = {
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, ADC_CHANNEL_3, &chan_config));
+    
     SensorData_t data;
     ActionData_t action;
     int loop_count = 0;
+    static int dark_triggered = 0;
+    
+    static int recorded_today = 0;
+    static char last_record_date[16] = {0};
 
     while (1) {
         loop_count++;
-        
-        /* 每次循环先清空指令结构体，防止垃圾数据 */
+        memset(&data, 0, sizeof(data)); 
         memset(&action, 0, sizeof(ActionData_t));
-        action.servo = -1;   // 默认不动
+        action.servo = -1;
 
         /* 读光敏 */
         int light_val = 0;
         adc_oneshot_read(adc1_handle, ADC_CHANNEL_3, &light_val);
         ESP_LOGI(TAG, "[第%d次] 光敏ADC值: %d", loop_count, light_val);
 
-        /* 填充数据（光敏是真的，其他是假的，等A交代码） */
+        /* 先给 data 填默认值 */
         data.light = light_val;
-        data.human = 1;           // 假数据
-        data.temperature = 26.5;  // 假数据
-        data.humidity = 60.0;     // 假数据
-        data.current = 0.5;       // 假数据
+        data.temperature = 26.5;
+        data.humidity = 60.0;
+        data.current = 0.5;
         data.relay = 0;
         data.servo = -1;
 
-        /* 上报后端 + 收 AI 指令 */
-        http_report(&data, &action);
+        /* 本地光敏触发语音询问 */
+        if (light_val < 500 && !dark_triggered) {
+            voice_send_cmd(0x01);   // 如果平台上 light_in 消息号改了，这里同步改
+            dark_triggered = 1;
+            ESP_LOGI(TAG, "光线过暗，触发语音询问");
+        } else if (light_val >= 500) {
+            dark_triggered = 0;
+        }
 
-        /* 执行指令（继电器等） */
+        /* 每日首次回寝记录 */
+        char today_date[16];
+        get_date_str(today_date, sizeof(today_date));
+        if (strcmp(today_date, last_record_date) != 0) {
+            recorded_today = 0;
+            strcpy(last_record_date, today_date);
+        }
+        
+        data.human = 1;  // TODO: 接入红外后改真实值
+        
+        if (data.human == 1 && !recorded_today) {
+            char now_str[6];
+            get_time_str(now_str, sizeof(now_str));
+            nvs_save_return_time(now_str);
+            recorded_today = 1;
+            
+            /* ===== home_in：红外检测回寝，直接开灯 + 语音播报（不经过AI）===== */
+            ActionData_t home_action = {0};
+            home_action.servo = -1;
+            home_action.relay = 1;   // 直接开灯
+            strncpy(home_action.oled_line1, "Home: Light ON", sizeof(home_action.oled_line1)-1);
+            execute_action(&home_action);
+            voice_send_cmd(0x09);   // 发 0x09 给语音模块，让它播"回家快乐"
+            ESP_LOGI(TAG, ">>> 红外检测回寝，直接开灯 + 语音播报");
+            /* ============================================================ */
+            
+            /* 上报首次回寝事件（只存数据库，不走AI决策） */
+            SensorData_t event_data = {0};
+            event_data.human = 1;
+            event_data.temperature = data.temperature;
+            event_data.humidity = data.humidity;
+            strcpy(event_data.event, "human_first");
+            strcpy(event_data.date, today_date);
+            strcpy(event_data.first_seen_time, now_str);
+            event_data.weekday = get_weekday();
+            
+            ActionData_t event_action = {0};
+            event_action.servo = -1;
+            http_report(&event_data, &event_action);
+            
+            ESP_LOGI(TAG, ">>> 今日首次回寝: %s", now_str);
+        }
+
+        /* 普通上报后端 */
+        http_report(&data, &action);
         execute_action(&action);
 
-        vTaskDelay(pdMS_TO_TICKS(10000));  // 10秒一次
+        vTaskDelay(pdMS_TO_TICKS(10000));
     }
-}
-
+}   // ← 补上这行！原来丢了
 /* ---------- 主入口 ---------- */
 void app_main(void)
 {
-    /* NVS 初始化（ESP32 的小硬盘） */
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -148,15 +206,22 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    /* 初始化继电器和 RGB 灯 */
     control_init();
+    oled_init();
 
-    oled_init();   // ← 加这一行，OLED 上电
-
-    /* 连 WiFi */
     ESP_LOGI(TAG, "开始连接WiFi...");
     wifi_init_sta();
+    
+    /* ===== 场景三：SNTP 时间同步 ===== */
+    sntp_init();
+    /* ================================= */
+    
+    voice_init();
+    xTaskCreate(voice_task, "voice_task", 4096, NULL, 5, NULL);
+    
+    /* ===== 场景三：启动预测任务 ===== */
+    xTaskCreate(predict_task, "predict_task", 8192, NULL, 4, NULL);
+    /* =============================== */
 
-    /* 启动传感器上报任务 */
     xTaskCreate(sensor_task, "sensor_task", 8192, NULL, 5, NULL);
 }

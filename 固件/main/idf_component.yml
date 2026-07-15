@@ -1,0 +1,5 @@
+dependencies:
+  espressif/led_strip: "^2.5.0"
+  espressif/cjson: "^1.7.19"
+  idf:
+    version: ">=4.1.0"

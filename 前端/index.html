@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>DormMate - 智能宿舍管家</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box}
+
+:root{
+  --bg-deep:#070b14;
+  --bg-card:rgba(15,22,42,0.82);
+  --bg-card-hover:rgba(20,30,55,0.9);
+  --border:rgba(255,255,255,0.07);
+  --text-primary:#eef0f8;
+  --text-secondary:#8890b8;
+  --accent:#00d4aa;
+  --accent-glow:rgba(0,212,170,0.25);
+  --accent2:#6366f1;
+  --accent2-glow:rgba(99,102,241,0.25);
+  --warm:#f59e0b;
+  --danger:#ef4444;
+  --glass:rgba(255,255,255,0.035);
+  --track-bg:#1a1f30;
+}
+
+body{
+  background:var(--bg-deep);
+  color:var(--text-primary);
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  padding:12px;
+  min-height:100vh;overflow-x:hidden;position:relative;
+}
+body::before{
+  content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;
+  background:
+    radial-gradient(circle at 15% 25%,rgba(0,212,170,0.06) 0%,transparent 35%),
+    radial-gradient(circle at 85% 75%,rgba(99,102,241,0.06) 0%,transparent 35%),
+    radial-gradient(circle at 50% 50%,rgba(245,158,11,0.02) 0%,transparent 50%);
+  animation:bgFloat 24s ease-in-out infinite;pointer-events:none;z-index:0;
+}
+@keyframes bgFloat{0%,100%{transform:translate(0,0)rotate(0deg)}33%{transform:translate(2%,-1.5%)rotate(0.5deg)}66%{transform:translate(-1%,1%)rotate(-0.5deg)}}
+
+@media(min-width:768px){body{padding:32px 24px;display:flex;justify-content:center;align-items:flex-start}}
+.app-container{max-width:680px;width:100%;position:relative;z-index:1}
+
+/* ---- 头部 ---- */
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;position:relative;z-index:1}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-icon{
+  width:42px;height:42px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+  border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;
+  box-shadow:0 4px 18px var(--accent-glow),0 0 0 1px rgba(255,255,255,0.1)inset;
+  animation:iconPulse 3s ease-in-out infinite
+}
+@keyframes iconPulse{0%,100%{transform:scale(1);box-shadow:0 4px 18px var(--accent-glow)}50%{transform:scale(1.05);box-shadow:0 6px 28px var(--accent-glow)}}
+.title{font-size:22px;font-weight:700;letter-spacing:-0.5px}
+.subtitle{font-size:10px;color:var(--text-secondary);margin-top:1px}
+
+/* ---- 实时时钟 ---- */
+.clock-wrap{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 16px;background:var(--glass);border-radius:24px;
+  border:1px solid var(--border);backdrop-filter:blur(12px);
+}
+.clock-time{font-size:20px;font-weight:700;letter-spacing:1px;font-variant-numeric:tabular-nums;color:var(--accent)}
+.clock-sep{color:var(--text-secondary);font-size:12px;opacity:0.5}
+
+/* ---- 连接状态 ---- */
+.status-dot{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:11px;font-weight:500;padding:5px 12px;
+  background:var(--glass);border-radius:20px;border:1px solid var(--border);backdrop-filter:blur(10px)
+}
+.status-dot .dot{width:7px;height:7px;border-radius:50%;position:relative}
+.status-dot .dot::after{content:'';position:absolute;top:-2px;left:-2px;width:11px;height:11px;border-radius:50%;animation:dotRipple 2s ease-out infinite}
+.online .dot{background:var(--accent)}.online .dot::after{background:var(--accent);opacity:0.4}
+.offline .dot{background:var(--danger)}.offline .dot::after{background:var(--danger);opacity:0.4}
+@keyframes dotRipple{0%{transform:scale(1);opacity:0.5}100%{transform:scale(2.5);opacity:0}}
+
+/* ---- 标签页 ---- */
+.tabs{
+  display:flex;background:var(--glass);border-radius:14px;margin-bottom:16px;
+  overflow:hidden;border:1px solid var(--border);backdrop-filter:blur(20px);position:relative;z-index:1;padding:3px
+}
+.tab{
+  flex:1;text-align:center;padding:10px 0;font-size:12px;font-weight:600;color:var(--text-secondary);
+  background:transparent;border:none;border-radius:11px;cursor:pointer;transition:all .3s;text-shadow:0 1px 2px rgba(0,0,0,0.4)
+}
+.tab.active{background:linear-gradient(135deg,rgba(0,212,170,0.12),rgba(99,102,241,0.12));color:var(--text-primary);box-shadow:0 2px 10px rgba(0,0,0,0.2)}
+.tab:not(.active):hover{color:#e0e4f0;background:rgba(255,255,255,0.05)}
+
+/* ---- 面板 ---- */
+.panel{display:none}.panel.active{display:block;animation:panelSlide .35s cubic-bezier(0.4,0,0.2,1)}
+@keyframes panelSlide{from{opacity:0;transform:translateY(16px)scale(.98)}to{opacity:1;transform:translateY(0)scale(1)}}
+
+/* ---- 卡片 ---- */
+.card{
+  background:var(--bg-card);border-radius:18px;padding:18px;margin-bottom:14px;
+  border:1px solid var(--border);backdrop-filter:blur(24px);position:relative;z-index:1;transition:all .3s;overflow:hidden
+}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)}
+.card:hover{transform:translateY(-2px);background:var(--bg-card-hover);box-shadow:0 8px 28px rgba(0,0,0,0.3)}
+.card-title{font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:14px;display:flex;align-items:center;gap:7px;text-transform:uppercase;letter-spacing:1px}
+.card-title .icon{font-size:15px}
+
+/* ---- 数据网格 ---- */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(min-width:768px){.grid{grid-template-columns:1fr 1fr 1fr}}
+
+.data-item{
+  background:var(--glass);border-radius:14px;padding:16px 10px;text-align:center;
+  border:1px solid var(--border);transition:all .3s;position:relative;overflow:hidden
+}
+.data-item::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));transform:scaleX(0);transition:transform .3s}
+.data-item:hover::after{transform:scaleX(1)}.data-item:hover{background:rgba(255,255,255,0.04);transform:translateY(-2px)}
+.num{font-size:30px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;display:block;line-height:1.2;transition:all .3s}
+.data-item:hover .num{transform:scale(1.08)}
+.label{font-size:10px;color:var(--text-secondary);margin-top:4px;display:block;font-weight:500}
+
+/* ---- 行 ---- */
+.row{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:12px 0;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:none;padding-bottom:0}.row:first-child{padding-top:0}
+.row-label{color:var(--text-secondary);font-weight:500}
+
+/* ---- 开关 ---- */
+.switch-wrap{display:flex;align-items:center;gap:8px}
+.switch{position:relative;display:inline-block;width:48px;height:26px}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#2a2f3e;border-radius:26px;transition:.3s;box-shadow:inset 0 2px 4px rgba(0,0,0,0.3)}
+.slider::before{position:absolute;content:"";height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s cubic-bezier(0.68,-0.55,0.27,1.55);box-shadow:0 2px 6px rgba(0,0,0,0.3)}
+input:checked+.slider{background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 18px var(--accent-glow)}
+input:checked+.slider::before{transform:translateX(22px)}
+
+/* ---- 按钮 ---- */
+.btn{
+  width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;
+  border:none;border-radius:14px;padding:14px;font-size:14px;font-weight:600;margin-top:14px;
+  cursor:pointer;position:relative;overflow:hidden;transition:all .3s;
+  box-shadow:0 4px 18px var(--accent-glow);letter-spacing:.5px
+}
+.btn::after{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);transition:left .5s}
+.btn:hover::after{left:100%}.btn:active{transform:scale(0.98)}
+
+/* ---- 滑块 ---- */
+.range-wrap{margin-top:10px;width:100%}
+input[type="range"]{-webkit-appearance:none;appearance:none;width:100%;height:7px;border-radius:4px;background:var(--track-bg);outline:none;cursor:pointer;border:none}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#fff;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,0.4),0 0 0 4px var(--accent-glow);margin-top:-8px;transition:transform .2s,box-shadow .2s}
+input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.12)}
+.range-ticks{display:flex;justify-content:space-between;margin-top:6px;padding:0 2px}
+.range-ticks span{font-size:9px;color:var(--text-secondary);opacity:0.5}
+/* ---- 时间选择器 ---- */
+.picker{background:var(--glass);padding:8px 14px;border-radius:10px;color:var(--accent);min-width:72px;text-align:center;border:1px solid var(--border);font-size:13px;font-weight:600;font-family:inherit;outline:none;transition:all .2s;cursor:pointer;appearance:none;-webkit-appearance:none}
+.picker:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.time-sep{color:var(--text-secondary);font-weight:700;font-size:15px}
+
+/* ---- 历史记录 ---- */
+.empty{text-align:center;color:var(--text-secondary);margin-top:50px;padding:30px;opacity:0.5}
+.empty-icon{font-size:42px;margin-bottom:10px;opacity:0.4}
+.history-card{
+  background:var(--bg-card);border-radius:14px;padding:16px;margin-bottom:10px;border:1px solid var(--border);
+  backdrop-filter:blur(20px);transition:all .3s;position:relative;overflow:hidden
+}
+.history-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--accent),var(--accent2));border-radius:3px 0 0 3px}
+.history-card:hover{transform:translateX(3px);background:var(--bg-card-hover)}
+.history-date{font-weight:700;font-size:14px;color:var(--text-primary);margin-bottom:2px}
+.history-weekday{font-size:10px;color:var(--accent);font-weight:600;background:var(--accent-glow);padding:2px 8px;border-radius:16px;display:inline-block;margin-bottom:8px}
+.history-detail{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text-secondary);flex-wrap:wrap;gap:4px}
+
+/* ---- Toast ---- */
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%)translateY(100px);
+  background:var(--bg-card);color:var(--text-primary);padding:12px 24px;border-radius:12px;
+  font-size:13px;font-weight:500;border:1px solid var(--border);backdrop-filter:blur(20px);
+  box-shadow:0 8px 28px rgba(0,0,0,0.4);z-index:1000;opacity:0;transition:all .4s;pointer-events:none
+}
+.toast.show{transform:translateX(-50%)translateY(0);opacity:1}
+.toast.success{border-color:var(--accent)}.toast.error{border-color:var(--danger)}
+
+.value-change{animation:valuePop .3s ease}
+@keyframes valuePop{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
+
+/* ---- 预处理状态 Badge ---- */
+.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.badge-done{background:rgba(0,212,170,0.15);color:var(--accent)}
+.badge-pending{background:rgba(239,68,68,0.15);color:var(--danger)}
+.badge-info{background:rgba(99,102,241,0.15);color:var(--accent2)}
+
+/* 小屏优化 */
+@media(max-width:380px){.title{font-size:19px}.num{font-size:24px}.grid{gap:7px}.data-item{padding:12px 6px}}
+</style>
+<base target="_blank">
+</head>
+<body>
+
+<div class="app-container">
+  <!-- 头部 -->
+  <div class="header">
+    <div class="brand">
+      <div class="brand-icon">DS</div>
+      <div>
+        <div class="title">DormMate</div>
+        <div class="subtitle">智能宿舍管家 · 乐鑫赛道</div>
+      </div>
+    </div>
+    <div class="status-dot offline" id="connStatus">
+      <span class="dot"></span><span id="connText">离线</span>
+    </div>
+  </div>
+
+  <!-- 实时时钟 -->
+  <div style="text-align:center;margin-bottom:16px;position:relative;z-index:1">
+    <div class="clock-wrap" style="display:inline-flex">
+      <span style="font-size:11px;color:var(--text-secondary)">🕐</span>
+      <span class="clock-time" id="clockDisplay">--:--:--</span>
+    </div>
+  </div>
+
+  <!-- 标签 -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab(0)">实时状态</button>
+    <button class="tab" onclick="switchTab(1)">回寝历史</button>
+    <button class="tab" onclick="switchTab(2)">偏好设置</button>
+  </div>
+
+  <!-- Tab0: 实时状态 -->
+  <div class="panel active" id="tab0">
+    <div class="card">
+      <span class="card-title"><span class="icon">环境数据</span></span>
+      <div class="grid">
+        <div class="data-item"><span class="num" id="valTemp">--</span><span class="label">温度 ℃</span></div>
+        <div class="data-item"><span class="num" id="valHum">--</span><span class="label">湿度 %</span></div>
+        <div class="data-item"><span class="num" id="valLight">--</span><span class="label">光线 ADC</span></div>
+        <div class="data-item"><span class="num" id="valHuman">--</span><span class="label">红外检测</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="card-title"><span class="icon">设备状态</span></span>
+      <div class="row">
+        <span class="row-label">灯光 / 继电器</span>
+        <div class="switch-wrap">
+          <label class="switch"><input type="checkbox" id="swRelay" onchange="toggleRelay()"><span class="slider"></span></label>
+          <span id="txtRelay" style="font-weight:600;min-width:20px">关</span>
+        </div>
+      </div>
+      <div class="row">
+        <span class="row-label">预处理状态</span>
+        <span id="txtPreheat" class="badge badge-pending">未触发</span>
+      </div>
+      <div class="row" id="rowPredTime" style="display:none">
+        <span class="row-label">预测回寝</span>
+        <span id="txtPredTime" style="color:var(--warm);font-weight:700">--</span>
+      </div>
+      <div class="row">
+        <span class="row-label">当前回寝时间</span>
+        <span id="txtReturnTime" style="color:var(--accent);font-weight:600">--</span>
+      </div>
+    </div>
+    <button class="btn" onclick="refresh()">刷新数据</button>
+  </div>
+
+  <!-- Tab1: 回寝历史 -->
+  <div class="panel" id="tab1">
+    <div id="historyList"></div>
+    <div class="empty" id="historyEmpty" style="display:none"><div class="empty-icon">暂无记录</div><div>尚无回寝历史数据</div></div>
+  </div>
+
+  <!-- Tab2: 偏好设置 -->
+  <div class="panel" id="tab2">
+    <div class="card">
+      <span class="card-title"><span class="icon">预处理偏好</span></span>
+      <div class="row" style="flex-direction:column;align-items:flex-start;gap:6px;border-bottom:none">
+        <div style="display:flex;justify-content:space-between;width:100%">
+          <span class="row-label">目标温度</span>
+          <span style="color:var(--accent);font-weight:700;font-size:17px" id="dispTemp">24℃</span>
+        </div>
+        <div class="range-wrap">
+          <input type="range" min="16" max="30" value="24" id="rngTemp"
+                 oninput="updateRangeFill(this);document.getElementById('dispTemp').innerText=this.value+'℃'">
+          <div class="range-ticks"><span>16</span><span>18</span><span>20</span><span>22</span><span>24</span><span>26</span><span>28</span><span>30</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <span class="row-label">自动预处理</span>
+        <label class="switch"><input type="checkbox" id="swEnable" checked><span class="slider"></span></label>
+      </div>
+      <div class="row">
+        <span class="row-label">自定义回寝时间</span>
+        <div style="display:flex;align-items:center;gap:5px">
+          <select class="picker" id="pickHour"></select>
+          <span class="time-sep">:</span>
+          <select class="picker" id="pickMin"></select>
+        </div>
+      </div>
+      <button class="btn" onclick="savePref()">保存设置</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// 使用相对路径自动适配当前网络环境
+const BASE = window.location.origin;
+
+// 实时时钟
+function updateClock(){
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const s = String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('clockDisplay').textContent = `${h}:${m}:${s}`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// 服务器时间同步
+async function syncTime(){
+  try{
+    const res = await fetch(BASE+'/api/time');
+    if(res.ok){
+      const t = await res.json();
+      const now = new Date(t.year, t.month-1, t.day, t.hour, t.minute, t.second);
+      // 不做强制同步，保留本地计时为主
+    }
+  }catch(e){}
+}
+syncTime();
+
+function switchTab(n){
+  document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((el,i)=>el.classList.toggle('active',i===n));
+}
+
+function showToast(msg, type='success'){
+  const t = document.getElementById('toast');
+  t.innerHTML = (type==='success'?'':'? ')+msg;
+  t.className = 'toast '+type+' show';
+  setTimeout(()=>t.classList.remove('show'), 2500);
+}
+
+function updateRangeFill(range){
+  const min = parseInt(range.min)||0;
+  const max = parseInt(range.max)||100;
+  const val = parseInt(range.value);
+  const pct = ((val-min)/(max-min))*100;
+  range.style.background = `linear-gradient(to right, #00d4aa 0%, #6366f1 ${pct}%, #1a1f30 ${pct}%, #1a1f30 100%)`;
+}
+
+async function req(url, method='GET', body=null){
+  try{
+    const opts = {method, headers:{'Content-Type':'application/json'}};
+    if(body) opts.body = JSON.stringify(body);
+    const res = await fetch(BASE+url, opts);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    setOnline(true);
+    return data;
+  }catch(e){
+    setOnline(false);
+    showToast('连接失败：'+e.message, 'error');
+    throw e;
+  }
+}
+
+function setOnline(ok){
+  const el = document.getElementById('connStatus');
+  const txt = document.getElementById('connText');
+  if(ok){el.className='status-dot online';txt.innerText='后端在线'}
+  else{el.className='status-dot offline';txt.innerText='离线'}
+}
+
+async function refresh(){
+  try{
+    const pred = await req('/api/predict/status?device_id=dormmate_01');
+    const preheatEl = document.getElementById('txtPreheat');
+    if(pred.preheat_triggered){
+      preheatEl.innerText = '已触发';
+      preheatEl.className = 'badge badge-done';
+    }else{
+      preheatEl.innerText = '未触发';
+      preheatEl.className = 'badge badge-pending';
+    }
+    if(pred.predict_time){
+      document.getElementById('rowPredTime').style.display = 'flex';
+      document.getElementById('txtPredTime').innerText = pred.predict_time;
+    }else{
+      document.getElementById('rowPredTime').style.display = 'none';
+    }
+
+    // 当前回寝时间：优先显示今天实际回寝时间，其次自定义预设时间
+    let returnTimeStr = '未设定';
+    if(pred.actual_return_time){
+        returnTimeStr = pred.actual_return_time + ' (今日已回寝)';
+    } else if(pred.preference && pred.preference.custom_return_time){s
+        returnTimeStr = pred.preference.custom_return_time + ' (预设)';
+    }
+    document.getElementById('txtReturnTime').innerText = returnTimeStr;
+
+    // 传感器
+    const cur = await req('/api/current');
+    const s = cur.sensors || {};
+    setValue('valTemp', s.temperature!==undefined?s.temperature:'--');
+    setValue('valHum', s.humidity!==undefined?s.humidity:'--');
+    setValue('valLight', s.light!==undefined?s.light:'--');
+    setValue('valHuman', s.human!==undefined?(s.human?'有人':'无人'):'--');
+    if(s.relay!==undefined){
+      document.getElementById('swRelay').checked=!!s.relay;
+      document.getElementById('txtRelay').innerText=s.relay?'开':'关';
+    }
+  }catch(e){}
+}
+
+function setValue(id, val){
+  const el = document.getElementById(id);
+  if(el.innerText !== String(val)){
+    el.innerText = val;
+    el.classList.add('value-change');
+    setTimeout(()=>el.classList.remove('value-change'), 300);
+  }
+}
+
+async function loadHistory(){
+  try{
+    const data = await req('/api/history/return?device_id=dormmate_01&days=30');
+    const list = document.getElementById('historyList');
+    const empty = document.getElementById('historyEmpty');
+    list.innerHTML = '';
+    if(!data.history||data.history.length===0){empty.style.display='block';return}
+    empty.style.display='none';
+    const week = ['日','一','二','三','四','五','六'];
+    data.history.forEach((h,idx)=>{
+      const div = document.createElement('div');
+      div.className = 'history-card';
+      div.style.animationDelay = (idx*0.04)+'s';
+      div.style.animation = 'panelSlide .35s ease forwards';
+      div.innerHTML =
+        '<div class="history-date">'+h.date+'</div>'+
+
+        '<div class="history-detail">'+
+        '<span>🕐 回寝：'+(h.first_seen_time||'--')+'</span>'+
+        '<span> '+ (h.temp_at_arrival!==undefined?h.temp_at_arrival+'℃':'--') +' / '+ (h.hum_at_arrival!==undefined?h.hum_at_arrival+'%':'--') +'</span>'+
+        '</div>';
+      list.appendChild(div);
+    });
+  }catch(e){}
+}
+
+function initTimePickers(){
+  const hourSel = document.getElementById('pickHour');
+  const minSel = document.getElementById('pickMin');
+  for(let i=0;i<24;i++){const o=document.createElement('option');o.value=String(i).padStart(2,'0');o.text=String(i).padStart(2,'0');hourSel.appendChild(o)}
+  for(let i=0;i<60;i+=5){const o=document.createElement('option');o.value=String(i).padStart(2,'0');o.text=String(i).padStart(2,'0');minSel.appendChild(o)}
+  hourSel.value='21';minSel.value='00';
+}
+
+async function loadPref(){
+  try{
+    const data = await req('/api/predict/status?device_id=dormmate_01');
+    if(data.preference){
+      const p = data.preference;
+      const rng = document.getElementById('rngTemp');
+      rng.value = p.pref_temp||24;
+      document.getElementById('dispTemp').innerText = (p.pref_temp||24)+'℃';
+      document.getElementById('swEnable').checked = !!p.preheat_enable;
+      if(p.custom_return_time){
+        const [h,m] = p.custom_return_time.split(':');
+        document.getElementById('pickHour').value = h;
+        document.getElementById('pickMin').value = m;
+      }
+      updateRangeFill(rng);
+    }
+  }catch(e){}
+}
+
+async function savePref(){
+  const h = document.getElementById('pickHour').value;
+  const m = document.getElementById('pickMin').value;
+  const body = {
+    device_id:'dormmate_01',
+    pref_temp:parseInt(document.getElementById('rngTemp').value),
+    preheat_enable:document.getElementById('swEnable').checked?1:0,
+    custom_return_time:`${h}:${m}`
+  };
+  try{
+    await req('/api/preference/return','POST',body);
+    showToast('已保存，设备将语音播报确认');
+  }catch(e){}
+}
+
+async function toggleRelay(){
+  const on = document.getElementById('swRelay').checked;
+  document.getElementById('txtRelay').innerText = on?'开':'关';
+  try{
+    await req('/api/control','POST',{device_id:'dormmate_01',relay:on?1:0});
+    showToast(on?'已下发开灯指令':'已下发关灯指令');
+  }catch(e){}
+}
+
+window.addEventListener('DOMContentLoaded',()=>{
+  updateRangeFill(document.getElementById('rngTemp'));
+  initTimePickers();
+});
+refresh();loadHistory();loadPref();
+</script>
+</body>
+</html>
